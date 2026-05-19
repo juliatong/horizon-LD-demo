@@ -7,56 +7,81 @@ import './index.css';
 // ─────────────────────────────────────────────────────────
 // LaunchDarkly Setup
 // ─────────────────────────────────────────────────────────
-// Replace the VITE_LD_CLIENT_SIDE_ID value in your .env file
-// with your LaunchDarkly client-side ID.
-// Find it at: LD Dashboard → Project Settings → Environments → Client-side ID
+// REVIEWER: Replace VITE_LD_CLIENT_SIDE_ID in your .env file
+// with your Client-side ID.
+// Find it at: LD Dashboard -> Project Settings -> Environments
 // ─────────────────────────────────────────────────────────
 
+// Safe default flag values used when:
+//   1. LD is unreachable at startup (network issue, wrong SDK key)
+//   2. SDK times out before returning flag values
+//   3. Flag has not been created in the reviewer's LD account
+//
+// Defaulting to false means the app renders the safe/existing
+// experience rather than accidentally releasing an untested feature.
+// This is the correct production default: fail closed, not open.
+const DEFAULT_FLAGS = {
+  'new-hero-section': false,
+};
+
 async function render() {
-  // asyncWithLDProvider initializes the SDK and waits for flag values
-  // before rendering the app. This prevents a flash of default content.
-  const LDProvider = await asyncWithLDProvider({
-    clientSideID: import.meta.env.VITE_LD_CLIENT_SIDE_ID,
+  let LDProvider;
 
-    // Multi-context: each kind represents an independent entity
-    // in the customer's data model.
-    //
-    // user    → the human (role, beta opt-in)
-    // account → the paying organization (plan, region)
-    // device  → the machine they're on (type)
-    //
-    // Separating these means a plan upgrade at the account level
-    // instantly affects all users in that account — without
-    // updating individual user records. This maps directly to
-    // how enterprise B2B SaaS manages entitlements.
-    context: {
-      kind: 'multi',
+  try {
+    LDProvider = await asyncWithLDProvider({
+      clientSideID: import.meta.env.VITE_LD_CLIENT_SIDE_ID,
 
-      user: {
-        key: 'user-default',
-        name: 'Default User',
-        role: 'member',
-        beta_tester: false,
+      // timeout: if the SDK does not connect and return flag values
+      // within 5 seconds, fall back to DEFAULT_FLAGS and render the app.
+      // Without this, asyncWithLDProvider hangs indefinitely if LD
+      // is unreachable - the user sees a blank screen forever.
+      timeout: 5,
+      // timeout: 0.001,
+
+      flags: DEFAULT_FLAGS,
+
+      // Multi-context: three independent context kinds.
+      // See README - Architecture Decisions for why these are separated.
+      context: {
+        kind: 'multi',
+
+        user: {
+          key: 'user-default',
+          name: 'Default User',
+          role: 'member',
+          beta_tester: false,
+        },
+
+        account: {
+          key: 'acc-default',
+          plan: 'free',
+          region: 'na',
+        },
+
+        device: {
+          key: 'dev-desktop-default',
+          type: 'desktop',
+        },
       },
+    });
+  } catch (error) {
+    // If asyncWithLDProvider itself throws (invalid SDK key, network
+    // failure before timeout), log the error and fall back to a
+    // minimal provider that serves DEFAULT_FLAGS to all components.
+    // The app remains functional - users see the safe default experience.
+    console.error('[LaunchDarkly] Failed to initialize SDK:', error);
+    console.warn('[LaunchDarkly] Rendering with default flag values:', DEFAULT_FLAGS);
 
-      account: {
-        key: 'acc-default',
-        plan: 'free',
-        region: 'na',
-      },
-
-      device: {
-        key: 'dev-desktop-default',
-        type: 'desktop',
-      },
-    },
-  });
+    // Fallback: create a pass-through provider using default flags only.
+    // This keeps the app functional without a live LD connection.
+    LDProvider = ({ children }) => children;
+  }
 
   const root = ReactDOM.createRoot(document.getElementById('root'));
   root.render(
     <React.StrictMode>
       <LDProvider>
-        <App />
+        <App defaultFlags={DEFAULT_FLAGS} />
       </LDProvider>
     </React.StrictMode>
   );

@@ -6,16 +6,16 @@ import { useLDClient } from 'launchdarkly-react-client-sdk';
 //
 // Each persona carries three context kinds:
 //
-//   user    → the human (role, beta opt-in)
+//   user    - the human (role, beta opt-in)
 //             Targeting story: "QA team always sees it first"
 //
-//   account → the paying organization (plan, region)
+//   account - the paying organization (plan, region)
 //             Targeting story: "enterprise APAC accounts first"
 //             Key insight: upgrading one account instantly
-//             affects all users in it — no user record updates
+//             affects all users in it - no user record updates
 //
-//   device  → the machine (type: desktop | mobile)
-//             Targeting story: "desktop before mobile —
+//   device  - the machine (type: desktop | mobile)
+//             Targeting story: "desktop before mobile -
 //             different QA cycles, different risk profiles"
 //
 // Mei demonstrates cross-context targeting:
@@ -26,84 +26,59 @@ import { useLDClient } from 'launchdarkly-react-client-sdk';
 
 const PERSONAS = [
   {
-    // USER CONTEXT
     key: 'qa-jane',
     name: 'Jane (QA Engineer)',
     role: 'internal',
     beta_tester: true,
-
-    // ACCOUNT CONTEXT
     account_key: 'acc-horizon-internal',
     account_name: 'Horizon Internal',
     account_plan: 'enterprise',
     account_region: 'apac',
-
-    // DEVICE CONTEXT
     device_key: 'dev-desktop-jane',
     device_type: 'desktop',
-
-    description: 'Internal QA — individual target, always sees new features',
+    description: 'Internal QA - individual target, always sees new features',
     targeting_reason: 'Individual target (user context)',
   },
   {
-    // USER CONTEXT
     key: 'user-akira',
     name: 'Akira (Enterprise APAC)',
     role: 'member',
     beta_tester: false,
-
-    // ACCOUNT CONTEXT
     account_key: 'acc-acme-corp',
     account_name: 'Acme Corp',
     account_plan: 'enterprise',
     account_region: 'apac',
-
-    // DEVICE CONTEXT
     device_key: 'dev-desktop-akira',
     device_type: 'desktop',
-
-    description: 'Enterprise customer in APAC — account-level rule match',
+    description: 'Enterprise customer in APAC - account-level rule match',
     targeting_reason: 'Rule: account.plan = enterprise + account.region = apac',
   },
   {
-    // USER CONTEXT
     key: 'user-sam',
     name: 'Sam (Free NA)',
     role: 'member',
     beta_tester: false,
-
-    // ACCOUNT CONTEXT
     account_key: 'acc-sam-startup',
-    account_name: 'Sam\'s Startup',
+    account_name: "Sam's Startup",
     account_plan: 'free',
     account_region: 'na',
-
-    // DEVICE CONTEXT
     device_key: 'dev-desktop-sam',
     device_type: 'desktop',
-
-    description: 'Free-tier user — no rules match, sees default experience',
-    targeting_reason: 'Default fallthrough → false (the safety net)',
+    description: 'Free-tier user - no rules match, sees default experience',
+    targeting_reason: 'Default fallthrough -> false (the safety net)',
   },
   {
-    // USER CONTEXT
     key: 'user-mei',
     name: 'Mei (Beta, Desktop)',
     role: 'member',
     beta_tester: true,
-
-    // ACCOUNT CONTEXT
     account_key: 'acc-global-tech',
     account_name: 'Global Tech EMEA',
     account_plan: 'enterprise',
     account_region: 'emea',
-
-    // DEVICE CONTEXT — desktop triggers the cross-context rule
-    // Change to 'mobile' to watch her drop to default
     device_key: 'dev-desktop-mei',
     device_type: 'desktop',
-
-    description: 'Beta tester on desktop — cross-context rule match',
+    description: 'Beta tester on desktop - cross-context rule match',
     targeting_reason: 'Rule: user.beta_tester = true AND device.type = desktop',
   },
 ];
@@ -112,40 +87,60 @@ function PersonaSwitcher() {
   const ldClient = useLDClient();
   const [activeKey, setActiveKey] = useState('qa-jane');
   const [switching, setSwitching] = useState(false);
+  const [error, setError] = useState(null);
 
   async function handleSwitch(persona) {
     if (persona.key === activeKey || switching) return;
 
     setSwitching(true);
+    setError(null);
 
-    // identify() re-evaluates all flags for the new multi-context.
-    // The SDK closes the current streaming connection and opens
-    // a new one for this context — all three kinds simultaneously.
-    await ldClient.identify({
-      kind: 'multi',
+    try {
+      // identify() tells LD: re-evaluate all flags for this new
+      // multi-context. The SDK closes the current streaming connection
+      // and opens a new one for all three context kinds simultaneously.
+      await ldClient.identify({
+        kind: 'multi',
 
-      user: {
-        key: persona.key,
-        name: persona.name,
-        role: persona.role,
-        beta_tester: persona.beta_tester,
-      },
+        user: {
+          key: persona.key,
+          name: persona.name,
+          role: persona.role,
+          beta_tester: persona.beta_tester,
+        },
 
-      account: {
-        key: persona.account_key,
-        name: persona.account_name,
-        plan: persona.account_plan,
-        region: persona.account_region,
-      },
+        account: {
+          key: persona.account_key,
+          name: persona.account_name,
+          plan: persona.account_plan,
+          region: persona.account_region,
+        },
 
-      device: {
-        key: persona.device_key,
-        type: persona.device_type,
-      },
-    });
+        device: {
+          key: persona.device_key,
+          type: persona.device_type,
+        },
+      });
 
-    setActiveKey(persona.key);
-    setSwitching(false);
+      setActiveKey(persona.key);
+
+    } catch (err) {
+      // identify() can fail if:
+      //   - Network is unavailable during the switch
+      //   - LD streaming connection drops mid-request
+      //   - SDK key has been revoked
+      //
+      // Without this catch, switching stays true forever and the
+      // persona panel freezes. With it, we surface the error and
+      // reset state so the user can retry.
+      console.error('[LaunchDarkly] identify() failed:', err);
+      setError('Failed to switch persona. Check your connection and try again.');
+
+    } finally {
+      // Always reset switching - whether identify() succeeded or failed.
+      // Without finally, a failure leaves the panel permanently disabled.
+      setSwitching(false);
+    }
   }
 
   return (
@@ -154,6 +149,14 @@ function PersonaSwitcher() {
         <span style={styles.headerIcon}>👤</span>
         <span>Switch Persona</span>
       </div>
+
+      {/* Error state - visible feedback when identify() fails */}
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}
+        </div>
+      )}
+
       {PERSONAS.map((persona) => {
         const isActive = persona.key === activeKey;
         return (
@@ -170,7 +173,6 @@ function PersonaSwitcher() {
             <div style={styles.personaName}>{persona.name}</div>
             <div style={styles.personaDesc}>{persona.description}</div>
 
-            {/* Context kind badges */}
             <div style={styles.contextRow}>
               <span style={styles.contextLabel}>user</span>
               <span style={styles.tag}>{persona.role}</span>
@@ -225,6 +227,15 @@ const styles = {
   },
   headerIcon: {
     fontSize: '1rem',
+  },
+  errorBanner: {
+    padding: '8px 12px',
+    marginBottom: '12px',
+    backgroundColor: 'rgba(255, 80, 80, 0.15)',
+    border: '1px solid rgba(255, 80, 80, 0.3)',
+    borderRadius: '6px',
+    color: '#ff8080',
+    fontSize: '0.75rem',
   },
   personaButton: {
     display: 'block',
