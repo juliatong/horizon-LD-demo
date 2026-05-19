@@ -18,24 +18,38 @@ async function render() {
   const LDProvider = await asyncWithLDProvider({
     clientSideID: import.meta.env.VITE_LD_CLIENT_SIDE_ID,
 
-    // This is the default context (user) the app starts with.
-    // In Part 2, we'll swap this dynamically using client.identify()
-    // to demonstrate targeting different user segments.
-    // context: {
-    //   kind: 'user',
-    //   key: 'user-default',
-    //   name: 'Default User',
-    //   // We'll add targeting attributes here in Part 2:
-    //   // user_tier, region, beta_tester, etc.
-    // },
+    // Multi-context: each kind represents an independent entity
+    // in the customer's data model.
+    //
+    // user    → the human (role, beta opt-in)
+    // account → the paying organization (plan, region)
+    // device  → the machine they're on (type)
+    //
+    // Separating these means a plan upgrade at the account level
+    // instantly affects all users in that account — without
+    // updating individual user records. This maps directly to
+    // how enterprise B2B SaaS manages entitlements.
     context: {
-      kind: 'user',
-      key: 'qa-jane',
-      name: 'Jane (QA Engineer)',
-      user_tier: 'internal',
-      region: 'apac',
-      beta_tester: true,
-    }    
+      kind: 'multi',
+
+      user: {
+        key: 'user-default',
+        name: 'Default User',
+        role: 'member',
+        beta_tester: false,
+      },
+
+      account: {
+        key: 'acc-default',
+        plan: 'free',
+        region: 'na',
+      },
+
+      device: {
+        key: 'dev-desktop-default',
+        type: 'desktop',
+      },
+    },
   });
 
   const root = ReactDOM.createRoot(document.getElementById('root'));

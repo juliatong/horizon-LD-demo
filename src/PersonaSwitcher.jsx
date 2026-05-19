@@ -4,48 +4,107 @@ import { useLDClient } from 'launchdarkly-react-client-sdk';
 // ─────────────────────────────────────────────────────────
 // PersonaSwitcher: Demo tool that simulates different users.
 //
-// In a real app, context attributes come from your auth system
-// or user database. Here we hardcode four personas to demonstrate
-// how LaunchDarkly targeting rules evaluate different user segments.
+// Each persona carries three context kinds:
 //
-// Each persona has attributes that map to targeting rules:
-//   - user_tier:     controls rollout by customer segment
-//   - region:        controls rollout by geography
-//   - beta_tester:   controls rollout by opt-in status
+//   user    → the human (role, beta opt-in)
+//             Targeting story: "QA team always sees it first"
+//
+//   account → the paying organization (plan, region)
+//             Targeting story: "enterprise APAC accounts first"
+//             Key insight: upgrading one account instantly
+//             affects all users in it — no user record updates
+//
+//   device  → the machine (type: desktop | mobile)
+//             Targeting story: "desktop before mobile —
+//             different QA cycles, different risk profiles"
+//
+// Mei demonstrates cross-context targeting:
+//   user.beta_tester = true AND device.type = desktop
+//   Both conditions must be true simultaneously.
+//   If she switches to mobile, she drops to default.
 // ─────────────────────────────────────────────────────────
 
 const PERSONAS = [
   {
+    // USER CONTEXT
     key: 'qa-jane',
     name: 'Jane (QA Engineer)',
-    user_tier: 'internal',
-    region: 'apac',
+    role: 'internal',
     beta_tester: true,
-    description: 'Internal QA — always sees new features',
+
+    // ACCOUNT CONTEXT
+    account_key: 'acc-horizon-internal',
+    account_name: 'Horizon Internal',
+    account_plan: 'enterprise',
+    account_region: 'apac',
+
+    // DEVICE CONTEXT
+    device_key: 'dev-desktop-jane',
+    device_type: 'desktop',
+
+    description: 'Internal QA — individual target, always sees new features',
+    targeting_reason: 'Individual target (user context)',
   },
   {
+    // USER CONTEXT
     key: 'user-akira',
-    name: 'Akira (Premium APAC)',
-    user_tier: 'premium',
-    region: 'apac',
+    name: 'Akira (Enterprise APAC)',
+    role: 'member',
     beta_tester: false,
-    description: 'Premium customer in APAC region',
+
+    // ACCOUNT CONTEXT
+    account_key: 'acc-acme-corp',
+    account_name: 'Acme Corp',
+    account_plan: 'enterprise',
+    account_region: 'apac',
+
+    // DEVICE CONTEXT
+    device_key: 'dev-desktop-akira',
+    device_type: 'desktop',
+
+    description: 'Enterprise customer in APAC — account-level rule match',
+    targeting_reason: 'Rule: account.plan = enterprise + account.region = apac',
   },
   {
+    // USER CONTEXT
     key: 'user-sam',
     name: 'Sam (Free NA)',
-    user_tier: 'free',
-    region: 'na',
+    role: 'member',
     beta_tester: false,
-    description: 'Free-tier user — should see default experience',
+
+    // ACCOUNT CONTEXT
+    account_key: 'acc-sam-startup',
+    account_name: 'Sam\'s Startup',
+    account_plan: 'free',
+    account_region: 'na',
+
+    // DEVICE CONTEXT
+    device_key: 'dev-desktop-sam',
+    device_type: 'desktop',
+
+    description: 'Free-tier user — no rules match, sees default experience',
+    targeting_reason: 'Default fallthrough → false (the safety net)',
   },
   {
+    // USER CONTEXT
     key: 'user-mei',
-    name: 'Mei (Premium EMEA Beta)',
-    user_tier: 'premium',
-    region: 'emea',
+    name: 'Mei (Beta, Desktop)',
+    role: 'member',
     beta_tester: true,
-    description: 'Premium EMEA user who opted into beta',
+
+    // ACCOUNT CONTEXT
+    account_key: 'acc-global-tech',
+    account_name: 'Global Tech EMEA',
+    account_plan: 'enterprise',
+    account_region: 'emea',
+
+    // DEVICE CONTEXT — desktop triggers the cross-context rule
+    // Change to 'mobile' to watch her drop to default
+    device_key: 'dev-desktop-mei',
+    device_type: 'desktop',
+
+    description: 'Beta tester on desktop — cross-context rule match',
+    targeting_reason: 'Rule: user.beta_tester = true AND device.type = desktop',
   },
 ];
 
@@ -59,16 +118,30 @@ function PersonaSwitcher() {
 
     setSwitching(true);
 
-    // identify() tells LaunchDarkly: "re-evaluate all flags for this new user."
-    // The SDK opens a new streaming connection for this context,
-    // fetches updated flag values, and useFlags() triggers a re-render.
+    // identify() re-evaluates all flags for the new multi-context.
+    // The SDK closes the current streaming connection and opens
+    // a new one for this context — all three kinds simultaneously.
     await ldClient.identify({
-      kind: 'user',
-      key: persona.key,
-      name: persona.name,
-      user_tier: persona.user_tier,
-      region: persona.region,
-      beta_tester: persona.beta_tester,
+      kind: 'multi',
+
+      user: {
+        key: persona.key,
+        name: persona.name,
+        role: persona.role,
+        beta_tester: persona.beta_tester,
+      },
+
+      account: {
+        key: persona.account_key,
+        name: persona.account_name,
+        plan: persona.account_plan,
+        region: persona.account_region,
+      },
+
+      device: {
+        key: persona.device_key,
+        type: persona.device_type,
+      },
     });
 
     setActiveKey(persona.key);
@@ -96,11 +169,28 @@ function PersonaSwitcher() {
           >
             <div style={styles.personaName}>{persona.name}</div>
             <div style={styles.personaDesc}>{persona.description}</div>
-            <div style={styles.attributes}>
-              <span style={styles.tag}>{persona.user_tier}</span>
-              <span style={styles.tag}>{persona.region}</span>
-              {persona.beta_tester && <span style={styles.tagBeta}>beta</span>}
+
+            {/* Context kind badges */}
+            <div style={styles.contextRow}>
+              <span style={styles.contextLabel}>user</span>
+              <span style={styles.tag}>{persona.role}</span>
+              {persona.beta_tester && (
+                <span style={styles.tagBeta}>beta</span>
+              )}
             </div>
+            <div style={styles.contextRow}>
+              <span style={styles.contextLabel}>account</span>
+              <span style={styles.tag}>{persona.account_plan}</span>
+              <span style={styles.tag}>{persona.account_region}</span>
+            </div>
+            <div style={styles.contextRow}>
+              <span style={styles.contextLabel}>device</span>
+              <span style={styles.tag}>{persona.device_type}</span>
+            </div>
+
+            {isActive && (
+              <div style={styles.reason}>{persona.targeting_reason}</div>
+            )}
           </button>
         );
       })}
@@ -113,7 +203,7 @@ const styles = {
     position: 'fixed',
     bottom: '20px',
     right: '20px',
-    width: '280px',
+    width: '300px',
     backgroundColor: '#1a1a2e',
     border: '1px solid #2a2a4a',
     borderRadius: '12px',
@@ -121,6 +211,8 @@ const styles = {
     zIndex: 1000,
     fontFamily: 'system-ui, sans-serif',
     boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    maxHeight: '90vh',
+    overflowY: 'auto',
   },
   header: {
     color: '#ffffff',
@@ -159,12 +251,22 @@ const styles = {
   personaDesc: {
     color: '#8888aa',
     fontSize: '0.75rem',
-    marginBottom: '6px',
+    marginBottom: '8px',
   },
-  attributes: {
+  contextRow: {
     display: 'flex',
+    alignItems: 'center',
     gap: '6px',
+    marginBottom: '4px',
     flexWrap: 'wrap',
+  },
+  contextLabel: {
+    fontSize: '0.65rem',
+    color: '#5555aa',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    width: '48px',
+    flexShrink: 0,
   },
   tag: {
     display: 'inline-block',
@@ -185,6 +287,15 @@ const styles = {
     color: '#00c896',
     borderRadius: '4px',
     textTransform: 'uppercase',
+  },
+  reason: {
+    marginTop: '8px',
+    padding: '6px 8px',
+    backgroundColor: 'rgba(0, 200, 150, 0.08)',
+    borderLeft: '2px solid #00c896',
+    color: '#00c896',
+    fontSize: '0.7rem',
+    borderRadius: '0 4px 4px 0',
   },
 };
 
