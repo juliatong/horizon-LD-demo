@@ -18,7 +18,7 @@ A single boolean feature flag (`new-hero-section`) controls a redesigned hero se
 
 - **Release instantly** - toggle the flag ON in the LaunchDarkly dashboard. The UI updates in real-time with zero page reload, powered by LaunchDarkly's streaming SSE connection.
 - **Roll back instantly** - toggle the flag OFF. The old experience returns in under a second. No rollback deploy, no CI pipeline, no downtime.
-- **Remediate via automation** - a single `curl` command turns off the flag remotely, simulating what PagerDuty, Datadog, or any incident response tool would do via webhook. The feature dies without a human touching the dashboard.
+- **Remediate via automation** - a single script call turns off the flag remotely, simulating what PagerDuty, Datadog, or any incident response tool would do via webhook. The feature dies without a human touching the dashboard.
 
 ### Part 2: Target
 
@@ -78,7 +78,7 @@ Go to your LaunchDarkly dashboard and create one flag:
 | Variation 1 | `true` |
 | Variation 2 | `false` |
 
-**Important:** Under the flag's **Settings** tab, ensure **"Client-side SDK availability"** is checked. The React SDK requires this.
+**Important:** Under the flag's **Settings** tab, ensure **"Client-side SDK availability"** is checked. The React SDK requires this. Without it, the flag returns undefined and the app renders the safe default with a console warning explaining the fix.
 
 ### 3. Configure your SDK key
 
@@ -89,7 +89,8 @@ VITE_LD_CLIENT_SIDE_ID=your-client-side-id-here
 ```
 
 <!-- REVIEWER: Replace with your Client-side ID.
-     Find it at: LaunchDarkly Dashboard -> Project Settings -> Environments -> your environment -> Client-side ID -->
+     Find it at: LD Dashboard -> Project Settings -> Environments -> your environment -> Client-side ID
+     This must be the Client-side ID, not the server-side SDK key. -->
 
 ### 4. Run the app
 
@@ -116,31 +117,31 @@ Open `http://localhost:5173` in your browser.
 1. In the LD dashboard, change the default rule back to `false`
 2. The old hero returns instantly
 
-**Act 3 - Incident response (the curl kill switch):**
+**Act 3 - Incident response (the kill switch):**
 1. Set the default rule back to `true` (feature is live)
-2. Open a terminal and run:
+2. Set your credentials in a terminal:
 
 ```bash
-curl -X PATCH \
-  'https://app.launchdarkly.com/api/v2/flags/default/new-hero-section' \
-  -H 'Authorization: YOUR_API_TOKEN' \
-  -H 'Content-Type: application/json; domain-model=launchdarkly.semanticpatch' \
-  -d '{
-    "environmentKey": "YOUR_ENVIRONMENT_KEY",
-    "instructions": [{ "kind": "turnFlagOff" }]
-  }'
+export LD_API_TOKEN=your-api-access-token
+export LD_ENV=test
 ```
 
-<!-- REVIEWER: Replace YOUR_API_TOKEN with an API access token (create one at Account Settings -> Authorization).
-     Replace YOUR_ENVIRONMENT_KEY with your environment key (e.g., "test" or "production").
+3. Run the kill script:
+
+```bash
+./kill-feature.sh
+```
+
+<!-- REVIEWER: Create an API token at: LD Dashboard -> Account Settings -> Authorization -> Create token
+     Role required: Writer or Admin
 
      Note on triggers: LaunchDarkly's native trigger feature (which generates a pre-baked webhook URL
      requiring no auth headers) is available on Enterprise plans. This demo achieves the same
      incident-response pattern via the REST API. In a customer environment with triggers enabled,
-     replace this script with a single curl -X POST <trigger-url> - no headers, no payload,
-     one command wired directly into your monitoring tool. -->
+     replace this script with a single: curl -X POST <trigger-url>
+     No headers. No payload. One command wired directly into your monitoring tool. -->
 
-3. Watch the browser - the feature dies without touching the dashboard. This is what automated incident response looks like: PagerDuty fires, webhook hits LaunchDarkly, broken feature is off in seconds.
+4. Watch the browser - the feature dies without touching the dashboard. This is what automated incident response looks like: PagerDuty fires, webhook hits LaunchDarkly, broken feature is off in seconds.
 
 ### Part 2: Target
 
@@ -230,6 +231,8 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 
 **Why the experiment runs on the default rule only:** Individually targeted users (Jane) and rule-matched users (Akira, Mei) are already committed to a variation. Running an experiment on them would contaminate the results - they are not in the general population being tested. Only Sam, who falls through to the default rule, represents the unbiased audience the experiment measures.
 
+**Why error handling is explicit, not silent:** Three failure modes are handled deliberately. First, `asyncWithLDProvider` has a 5-second timeout - without it the app hangs on a blank screen if LD is unreachable. On timeout or initialization failure, the app falls back to safe defaults (flag off = old hero) rather than crashing. Second, `identify()` is wrapped in try/catch with a finally block - a network blip during persona switch would otherwise leave the panel permanently frozen. The finally block ensures state always resets whether the call succeeds or fails. Third, the flag value uses the `??` operator to guard against undefined - if the reviewer forgets to create the flag or enable client-side SDK availability, the app renders the safe default and logs a clear console warning explaining exactly what to fix. The principle throughout: fail closed (show old experience), not open (accidentally release an untested feature).
+
 ---
 
 ## Project Structure
@@ -238,13 +241,14 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 horizon-app/
 |-- .env                        # LaunchDarkly client-side ID (not committed)
 |-- index.html                  # Vite entry point
+|-- kill-feature.sh             # Incident response simulation - kills feature via REST API
 |-- package.json
 |-- src/
-|   |-- main.jsx                # App entry - initializes LD provider with multi-context
-|   |-- App.jsx                 # Reads flag, renders correct hero
-|   |-- HeroOld.jsx             # Current landing page (flag OFF)
-|   |-- HeroNew.jsx             # New feature (flag ON) - tracks cta-clicked event
-|   |-- PersonaSwitcher.jsx     # Demo tool - switches multi-context (user+account+device)
+|   |-- main.jsx                # App entry - multi-context init, timeout, catch block
+|   |-- App.jsx                 # Flag undefined guard, hero routing, persona switcher
+|   |-- HeroOld.jsx             # Current landing page (flag OFF) - tracks CTA clicks
+|   |-- HeroNew.jsx             # New feature (flag ON) - tracks CTA clicks
+|   |-- PersonaSwitcher.jsx     # Multi-context persona switch, try/catch, error state
 |   `-- index.css               # Minimal global styles
 `-- README.md
 ```
@@ -259,6 +263,7 @@ horizon-app/
 - LaunchDarkly React SDK (`launchdarkly-react-client-sdk`)
 - No backend required - everything runs client-side
 - The `.env` file is gitignored - the reviewer creates their own
+- `kill-feature.sh` requires an LD API token with Writer or Admin role
 
 ---
 
@@ -271,5 +276,6 @@ horizon-app/
 | Flag type | Boolean |
 | Context kinds | `user`, `account`, `device` |
 | Metric event key | `cta-clicked` |
+| SDK initialization timeout | 5 seconds |
 | SDK key location | `.env` -> `VITE_LD_CLIENT_SIDE_ID` |
 | SDK key type | Client-side ID (not server-side SDK key) |
