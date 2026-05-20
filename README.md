@@ -226,6 +226,8 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 
 **Note on statistical significance:** Reaching a conclusive result requires thousands of users. The goal here is to demonstrate experiment setup, event flow, multi-metric tracking, and the results UI - not to reach statistical significance.
 
+**Note on variation assignment:** When the experiment is running, Sam's variation is determined by a hash of his user key against the 50/50 traffic split. This means Sam will consistently see the same variation within a session - but which variation (HeroOld or HeroNew) depends on how his key hashes. Do not assume Sam will see HeroOld during the experiment. Either outcome is correct experiment behaviour. What matters for verification is that the CTA click fires both `cta-clicked` and `trial-started` events regardless of which variation Sam is assigned to. This is also why stopping the experiment and shipping `false` is required before running the Part 2 targeting demo - otherwise Sam's variation is experiment-controlled and you cannot guarantee he sees HeroOld as the default fallthrough proof.
+
 ---
 
 ## Architecture Decisions
