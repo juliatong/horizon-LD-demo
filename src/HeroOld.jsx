@@ -3,9 +3,19 @@
 // This is the "safe" default experience all users see
 // when the feature flag is OFF.
 //
-// The CTA button tracks a 'cta-clicked' event via LaunchDarkly.
-// This feeds into the experiment measuring click-through rate
-// across both hero variations.
+// Two experiment metrics are tracked on CTA click:
+//
+//   cta-clicked   -> primary metric, intent signal
+//                    "did the user engage with the CTA?"
+//
+//   trial-started -> secondary metric, conversion signal
+//                    "did the user take the next step?"
+//
+// In production these would fire at different points
+// in the user journey. Here they fire together to
+// demonstrate the multi-metric experiment pattern.
+// A PM would use cta-clicked as a leading indicator
+// and trial-started as the true conversion measure.
 // ─────────────────────────────────────────────────────────
 
 import { useLDClient } from 'launchdarkly-react-client-sdk';
@@ -14,8 +24,15 @@ function HeroOld() {
   const ldClient = useLDClient();
 
   function handleCtaClick() {
+    // Primary metric: intent signal
     ldClient.track('cta-clicked');
-    console.log('[Experiment] Tracked cta-clicked event (old hero)');
+
+    // Secondary metric: conversion signal
+    // In production this fires after signup form submission,
+    // not on button click. Here it demonstrates the pattern.
+    ldClient.track('trial-started');
+
+    console.log('[Experiment] Tracked cta-clicked + trial-started (old hero)');
   }
 
   return (

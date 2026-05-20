@@ -193,6 +193,13 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
    - Success criteria: **Higher is better**
    - Name: **CTA Click Rate**
 
+**Create a second metric (optional but recommended):**
+- Event key: `trial-started`
+- What to measure: **Occurrence**
+- Success criteria: **Higher is better**
+- Name: **Trial Start Rate**
+- Add this as a secondary metric when creating the experiment
+
 **Setup - Create the experiment:**
 1. Go to Experiments -> Create experiment
 2. Configure:
@@ -209,11 +216,15 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 
 **Testing:**
 1. Switch to Sam (the only persona on the default rule - individually targeted and rule-matched users are excluded from the experiment)
-2. Click the CTA button several times
+2. Click the CTA button several times - each click fires two events: `cta-clicked` (primary, intent) and `trial-started` (secondary, conversion)
 3. Wait a few minutes, then check the Results tab
-4. You should see conversions and exposures registering
+4. You should see conversions and exposures registering for both metrics
 
-**Note:** Statistical significance requires thousands of users. The goal here is to demonstrate the experiment setup, event flow, and results UI - not to reach a conclusive result.
+**Note on experiment audience bias:** This experiment measures conversion for users who fall through to the default rule - the general population not covered by targeting rules. Enterprise and beta users are pre-committed to a variation and excluded from the experiment. In a production setup, a separate experiment flag would be used to measure conversion across the full user base independently of the targeting rollout. This is a known architectural tension: the more sophisticated your targeting rules, the smaller and more biased your experiment audience becomes.
+
+**Note on metrics:** Two metrics are tracked on each CTA click. `cta-clicked` is a leading indicator - it measures intent but not outcome. A user can click and immediately bounce. `trial-started` is the conversion signal - in production this would fire after signup form submission, not on button click. Both are tracked here to demonstrate the multi-metric experiment pattern and the distinction between intent and conversion.
+
+**Note on statistical significance:** Reaching a conclusive result requires thousands of users. The goal here is to demonstrate experiment setup, event flow, multi-metric tracking, and the results UI - not to reach statistical significance.
 
 ---
 
@@ -221,7 +232,7 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 
 **Why React + client-side SDK:** The demo story requires visual, instant feedback. A server-side SDK would require page refreshes to reflect flag changes, losing the "wow moment" of real-time toggling. In production, sensitive flags (pricing logic, entitlements) should use a server-side SDK to prevent client inspection of flag values.
 
-**Why `asyncWithLDProvider`:** The async variant waits for the SDK to connect and fetch flag values before the app renders. Without it, users see a flash of the default experience before the correct variation loads.
+**Why `asyncWithLDProvider` over `withLDProvider`:** The two providers differ in when SDK initialization happens relative to React rendering. `withLDProvider` initializes the SDK at `componentDidMount` - meaning the app renders first, then the SDK connects, then flags arrive. On that first render, `useFlags()` returns an empty object, the flag is undefined, and the app briefly shows the default experience before flipping to the correct variation. That flicker is visible and looks broken in a demo. `asyncWithLDProvider` with `await` moves SDK initialization before render entirely - execution blocks at the `await` until the SDK connects and returns flag values, then the app renders once with the correct values already loaded. No flicker, no undefined state, no visible correction. The naming is counterintuitive: `asyncWithLDProvider` is the async function, but awaiting it produces blocking behaviour. `withLDProvider` sounds synchronous but is actually non-blocking because React controls its lifecycle. The right mental model is not sync vs async - it is who controls timing. With `withLDProvider`, React controls when the SDK initializes (after mount). With `asyncWithLDProvider` and `await`, you control it (before render). For a demo where first impression matters, controlling that timing is the right call. For an app that already has a loading state (auth check, data fetch), `withLDProvider` is fine - the existing spinner hides the flag evaluation latency and you avoid blocking render unnecessarily.
 
 **Why multi-context (user + account + device):** A flat user model breaks down in enterprise B2B SaaS. Consider: Acme Corp upgrades from free to enterprise. With a flat model, you update the plan attribute on every user record - N writes, risk of inconsistency during the update window. With a separate account context, you update one record and all users in that account instantly see the enterprise experience. The three context kinds here represent three independent axes of targeting - who the person is, what organization they belong to, and what device they are on. These change independently and drive different rollout decisions.
 
@@ -230,6 +241,8 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 **Why `identify()` on persona switch:** In a real app, `identify()` fires on login or account switch. Here it fires on persona click to simulate the same flow. The SDK closes the current streaming connection and opens a new one for the new multi-context, re-evaluating all flags simultaneously.
 
 **Why the experiment runs on the default rule only:** Individually targeted users (Jane) and rule-matched users (Akira, Mei) are already committed to a variation. Running an experiment on them would contaminate the results - they are not in the general population being tested. Only Sam, who falls through to the default rule, represents the unbiased audience the experiment measures.
+
+**Why client-side context is acceptable here, and when it is not:** Context attributes in this demo are client-constructed - the browser builds the identify() call with user, account, and device attributes and sends them to LD without server verification. LD evaluates these attributes at face value. This means a motivated user could open DevTools, find the identify() call, and craft a context claiming to be enterprise tier or a beta tester. For this demo, that is an acceptable risk - the flag controls a visual UI change with zero business consequence if bypassed. In production, any flag that enforces a business rule (entitlements, pricing gates, access control) requires server-verified identity. There are two production patterns for this. First, server-side SDK evaluation: the client never touches LD directly, the server evaluates flags against verified attributes from your database and returns the rendered result - flag values and context attributes never reach the browser. Second, server-issued signed context: the client authenticates with your server, the server returns a signed token containing verified attributes, the client passes it to LD which verifies the signature - the client gets real-time streaming updates but cannot tamper with the attributes. The rule of thumb: if bypassing a flag has a business consequence, context must come from your server. If it is purely visual, client-side is fine.
 
 **Why error handling is explicit, not silent:** Three failure modes are handled deliberately. First, `asyncWithLDProvider` has a 5-second timeout - without it the app hangs on a blank screen if LD is unreachable. On timeout or initialization failure, the app falls back to safe defaults (flag off = old hero) rather than crashing. Second, `identify()` is wrapped in try/catch with a finally block - a network blip during persona switch would otherwise leave the panel permanently frozen. The finally block ensures state always resets whether the call succeeds or fails. Third, the flag value uses the `??` operator to guard against undefined - if the reviewer forgets to create the flag or enable client-side SDK availability, the app renders the safe default and logs a clear console warning explaining exactly what to fix. The principle throughout: fail closed (show old experience), not open (accidentally release an untested feature).
 
@@ -255,6 +268,33 @@ horizon-app/
 
 ---
 
+## Demo State Guide
+
+Each part of the demo requires a specific flag state. Run these in order and reset between parts to avoid state conflicts.
+
+| Demo part | Targeting | Default rule | Experiment |
+|-----------|-----------|--------------|------------|
+| App loads (baseline) | ON | false | Stopped |
+| Part 1 - Act 1 (release) | ON | true | Stopped |
+| Part 1 - Act 2 (rollback) | ON | false | Stopped |
+| Part 1 - Act 3 (kill switch) | ON | true | Stopped |
+| Part 2 (targeting) | ON | false | Stopped |
+| Experimentation | ON | false | Running |
+
+**Reset sequence between Part 1 and Part 2:**
+1. Turn targeting back ON if kill switch was run
+2. Set default rule back to `false`
+3. Confirm targeting rules are configured (individual target + Rule 1 + Rule 2)
+
+**Reset sequence before Experimentation demo:**
+1. Confirm targeting is ON, default rule is `false`
+2. Start the experiment iteration in the dashboard
+3. Switch to Sam - he is the only persona on the default rule
+4. Click CTA buttons to generate events
+5. Wait a few minutes for results to appear
+
+---
+
 ## Environment & Assumptions
 
 - Node.js v20+ required
@@ -275,7 +315,7 @@ horizon-app/
 | Flag key | `new-hero-section` |
 | Flag type | Boolean |
 | Context kinds | `user`, `account`, `device` |
-| Metric event key | `cta-clicked` |
+| Metric event keys | `cta-clicked` (primary), `trial-started` (secondary) |
 | SDK initialization timeout | 5 seconds |
 | SDK key location | `.env` -> `VITE_LD_CLIENT_SIDE_ID` |
 | SDK key type | Client-side ID (not server-side SDK key) |
