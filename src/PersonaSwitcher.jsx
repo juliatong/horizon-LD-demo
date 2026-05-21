@@ -87,12 +87,14 @@ function PersonaSwitcher() {
   const ldClient = useLDClient();
   const [activeKey, setActiveKey] = useState('qa-jane');
   const [switching, setSwitching] = useState(false);
+  const [loadingKey, setLoadingKey] = useState(null);
   const [error, setError] = useState(null);
 
   async function handleSwitch(persona) {
     if (persona.key === activeKey || switching) return;
 
     setSwitching(true);
+    setLoadingKey(persona.key);
     setError(null);
 
     try {
@@ -137,9 +139,11 @@ function PersonaSwitcher() {
       setError('Failed to switch persona. Check your connection and try again.');
 
     } finally {
-      // Always reset switching - whether identify() succeeded or failed.
-      // Without finally, a failure leaves the panel permanently disabled.
+      // Always reset switching and loadingKey - whether identify()
+      // succeeded or failed. Without finally, a failure leaves the
+      // panel permanently disabled and loadingKey stuck.
       setSwitching(false);
+      setLoadingKey(null);
     }
   }
 
@@ -159,6 +163,8 @@ function PersonaSwitcher() {
 
       {PERSONAS.map((persona) => {
         const isActive = persona.key === activeKey;
+        const isLoading = persona.key === loadingKey;
+
         return (
           <button
             key={persona.key}
@@ -167,30 +173,44 @@ function PersonaSwitcher() {
             style={{
               ...styles.personaButton,
               ...(isActive ? styles.active : {}),
-              opacity: switching && !isActive ? 0.5 : 1,
+              ...(isLoading ? styles.loading : {}),
+              opacity: switching && !isActive && !isLoading ? 0.4 : 1,
             }}
           >
-            <div style={styles.personaName}>{persona.name}</div>
-            <div style={styles.personaDesc}>{persona.description}</div>
-
-            <div style={styles.contextRow}>
-              <span style={styles.contextLabel}>user</span>
-              <span style={styles.tag}>{persona.role}</span>
-              {persona.beta_tester && (
-                <span style={styles.tagBeta}>beta</span>
-              )}
-            </div>
-            <div style={styles.contextRow}>
-              <span style={styles.contextLabel}>account</span>
-              <span style={styles.tag}>{persona.account_plan}</span>
-              <span style={styles.tag}>{persona.account_region}</span>
-            </div>
-            <div style={styles.contextRow}>
-              <span style={styles.contextLabel}>device</span>
-              <span style={styles.tag}>{persona.device_type}</span>
+            {/* Persona name with loading spinner prefix */}
+            <div style={styles.personaName}>
+              {isLoading ? '⟳ ' : ''}{persona.name}
             </div>
 
-            {isActive && (
+            {/* Show "Switching..." during load, description otherwise */}
+            <div style={styles.personaDesc}>
+              {isLoading ? 'Switching...' : persona.description}
+            </div>
+
+            {/* Context kind badges - hidden during loading for clarity */}
+            {!isLoading && (
+              <>
+                <div style={styles.contextRow}>
+                  <span style={styles.contextLabel}>user</span>
+                  <span style={styles.tag}>{persona.role}</span>
+                  {persona.beta_tester && (
+                    <span style={styles.tagBeta}>beta</span>
+                  )}
+                </div>
+                <div style={styles.contextRow}>
+                  <span style={styles.contextLabel}>account</span>
+                  <span style={styles.tag}>{persona.account_plan}</span>
+                  <span style={styles.tag}>{persona.account_region}</span>
+                </div>
+                <div style={styles.contextRow}>
+                  <span style={styles.contextLabel}>device</span>
+                  <span style={styles.tag}>{persona.device_type}</span>
+                </div>
+              </>
+            )}
+
+            {/* Targeting reason - only on active, non-loading persona */}
+            {isActive && !isLoading && (
               <div style={styles.reason}>{persona.targeting_reason}</div>
             )}
           </button>
@@ -247,11 +267,15 @@ const styles = {
     borderRadius: '8px',
     cursor: 'pointer',
     textAlign: 'left',
-    transition: 'border-color 0.2s',
+    transition: 'border-color 0.2s, background-color 0.2s',
   },
   active: {
     border: '1px solid #00c896',
     backgroundColor: '#1e3a3a',
+  },
+  loading: {
+    border: '1px solid #4a9eff',
+    backgroundColor: '#1a2a3a',
   },
   personaName: {
     color: '#ffffff',

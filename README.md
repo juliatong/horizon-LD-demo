@@ -61,7 +61,7 @@ The Product Manager needs data to justify the new hero section. Opinions are not
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/horizon-ld-demo.git
+git clone https://github.com/juliatong/horizon-ld-demo.git
 cd horizon-ld-demo
 npm install
 ```
