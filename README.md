@@ -61,7 +61,7 @@ The Product Manager needs data to justify the new hero section. Opinions are not
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/juliatong/horizon-ld-demo.git
+git clone https://github.com/YOUR_USERNAME/horizon-ld-demo.git
 cd horizon-ld-demo
 npm install
 ```
@@ -151,11 +151,24 @@ export LD_ENV=test
 
 **Restoring after the kill switch (reset for Part 2):**
 
+Requires Python 3 (pre-installed on macOS). This script does three things in sequence:
+
+1. Checks if the experiment is running - if so, pauses and prompts you to stop it manually in the LD dashboard (LD requires manual confirmation to stop experiment iterations via dashboard policy)
+2. Turns targeting back ON via REST API
+3. Sets the default rule to serve `false` via REST API
+
 ```bash
+export LD_API_TOKEN=your-token
+export LD_ENV=test
 ./enable-feature.sh
 ```
 
-This turns targeting back ON. Then confirm the default rule is set to `false` in the dashboard before running the Part 2 targeting demo.
+If prompted to stop the experiment manually:
+1. Go to LD dashboard: Experiments -> Hero Section A/B Test -> Stop
+2. Select `false` (Current Hero) as the winning variation
+3. Confirm, then press Enter in the terminal to continue
+
+Verify the reset worked: switch to Sam in the browser - he should see HeroOld.
 
 ### Part 2: Target
 
@@ -218,7 +231,7 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 1. Go to Experiments -> Create experiment
 2. Configure:
    - Name: **Hero Section A/B Test**
-   - Hypothesis: *"The new hero section with AI messaging will drive more CTA clicks than the current hero."*
+   - Hypothesis: *"Among general-population users not covered by account-level or beta targeting rules, the AI-focused hero section will drive higher CTA click-through and trial start rates than the current hero, validating the messaging before full rollout to targeted segments."*
    - Metric: **CTA Click Rate**
    - Flag: `new-hero-section`
    - Targeting rule: **Default Rule**
@@ -257,6 +270,8 @@ Change `device_type` from `desktop` to `mobile` in `PersonaSwitcher.jsx` for Mei
 **Why `identify()` on persona switch:** In a real app, `identify()` fires on login or account switch. Here it fires on persona click to simulate the same flow. The SDK closes the current streaming connection and opens a new one for the new multi-context, re-evaluating all flags simultaneously.
 
 **Why the experiment runs on the default rule only:** Individually targeted users (Jane) and rule-matched users (Akira, Mei) are already committed to a variation. Running an experiment on them would contaminate the results - they are not in the general population being tested. Only Sam, who falls through to the default rule, represents the unbiased audience the experiment measures.
+
+**Why device keys are stable per persona in this demo:** In production, device keys would be generated per physical device - a UUID stored in localStorage or derived from device fingerprinting. Here, device keys are stable per persona (e.g. `dev-desktop-jane`) for demo repeatability. If Jane used two physical devices, both would share the same key in this demo - that is not a real device context. The important concept being demonstrated is that device attributes (type, OS) are evaluated independently from user and account attributes. The key stability is a demo simplification, not a production pattern.
 
 **Why client-side context is acceptable here, and when it is not:** Context attributes in this demo are client-constructed - the browser builds the identify() call with user, account, and device attributes and sends them to LD without server verification. LD evaluates these attributes at face value. This means a motivated user could open DevTools, find the identify() call, and craft a context claiming to be enterprise tier or a beta tester. For this demo, that is an acceptable risk - the flag controls a visual UI change with zero business consequence if bypassed. In production, any flag that enforces a business rule (entitlements, pricing gates, access control) requires server-verified identity. There are two production patterns for this. First, server-side SDK evaluation: the client never touches LD directly, the server evaluates flags against verified attributes from your database and returns the rendered result - flag values and context attributes never reach the browser. Second, server-issued signed context: the client authenticates with your server, the server returns a signed token containing verified attributes, the client passes it to LD which verifies the signature - the client gets real-time streaming updates but cannot tamper with the attributes. The rule of thumb: if bypassing a flag has a business consequence, context must come from your server. If it is purely visual, client-side is fine.
 
