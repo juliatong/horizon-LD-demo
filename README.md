@@ -82,7 +82,13 @@ Go to your LaunchDarkly dashboard and create one flag:
 
 ### 3. Configure your SDK key
 
-Create a `.env` file in the project root:
+Create a `.env` file from the example:
+
+```bash
+cp .env.example .env
+```
+
+Then fill in your Client-side ID in `.env`:
 
 ```
 VITE_LD_CLIENT_SIDE_ID=your-client-side-id-here
@@ -142,6 +148,14 @@ export LD_ENV=test
      No headers. No payload. One command wired directly into your monitoring tool. -->
 
 4. Watch the browser - the feature dies without touching the dashboard. This is what automated incident response looks like: PagerDuty fires, webhook hits LaunchDarkly, broken feature is off in seconds.
+
+**Restoring after the kill switch (reset for Part 2):**
+
+```bash
+./enable-feature.sh
+```
+
+This turns targeting back ON. Then confirm the default rule is set to `false` in the dashboard before running the Part 2 targeting demo.
 
 ### Part 2: Target
 
@@ -257,6 +271,9 @@ horizon-app/
 |-- .env                        # LaunchDarkly client-side ID (not committed)
 |-- index.html                  # Vite entry point
 |-- kill-feature.sh             # Incident response simulation - kills feature via REST API
+|-- enable-feature.sh           # Restores feature flag after kill-feature.sh
+|-- .env.example                # Template for .env - copy and fill in your values
+|-- .nvmrc                      # Node version pin: 20
 |-- package.json
 |-- src/
 |   |-- main.jsx                # App entry - multi-context init, timeout, catch block
