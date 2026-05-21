@@ -2,29 +2,27 @@ import { useFlags } from 'launchdarkly-react-client-sdk';
 import HeroOld from './HeroOld';
 import HeroNew from './HeroNew';
 import PersonaSwitcher from './PersonaSwitcher';
+import { DEFAULT_FLAGS } from './constants';
 
-// defaultFlags is passed from main.jsx as a safety net.
-// If the LD SDK failed to initialize, useFlags() returns an empty
-// object - without this guard, the app would silently render HeroOld
-// with no indication of why. With it, we're explicit about the fallback.
-function App({ defaultFlags = { 'new-hero-section': false } }) {
+function App() {
   const flags = useFlags();
 
-  // Guard: if the flag is undefined, the SDK either hasn't connected yet
-  // or the flag doesn't exist in the reviewer's LD account.
-  // Fall back to the safe default (false = old hero) rather than
-  // crashing or rendering unpredictably.
+  // Guard: if the flag is undefined, the SDK either has not connected
+  // yet or the flag does not exist in the reviewer's LD account.
+  // Falls back to DEFAULT_FLAGS from constants.js - single source of
+  // truth shared with main.jsx. Changing the default in one place
+  // changes it everywhere.
   //
   // In a production app this would also log to your observability
   // platform (Datadog, Sentry) so the team knows a flag is missing.
-  const newHeroSection = flags.newHeroSection ?? defaultFlags['new-hero-section'];
+  const newHeroSection = flags.newHeroSection ?? DEFAULT_FLAGS['new-hero-section'];
 
   if (flags.newHeroSection === undefined) {
     console.warn(
       '[LaunchDarkly] Flag "new-hero-section" is undefined. ' +
       'Check that the flag exists in your LD account and that ' +
       '"Client-side SDK availability" is enabled in flag Settings. ' +
-      'Rendering with default value: ' + defaultFlags['new-hero-section']
+      'Rendering with default value: ' + DEFAULT_FLAGS['new-hero-section']
     );
   }
 

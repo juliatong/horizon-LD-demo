@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { asyncWithLDProvider } from 'launchdarkly-react-client-sdk';
 import App from './App';
+import { DEFAULT_FLAGS } from './constants';
 import './index.css';
 
 // ─────────────────────────────────────────────────────────
@@ -11,18 +12,6 @@ import './index.css';
 // with your Client-side ID.
 // Find it at: LD Dashboard -> Project Settings -> Environments
 // ─────────────────────────────────────────────────────────
-
-// Safe default flag values used when:
-//   1. LD is unreachable at startup (network issue, wrong SDK key)
-//   2. SDK times out before returning flag values
-//   3. Flag has not been created in the reviewer's LD account
-//
-// Defaulting to false means the app renders the safe/existing
-// experience rather than accidentally releasing an untested feature.
-// This is the correct production default: fail closed, not open.
-const DEFAULT_FLAGS = {
-  'new-hero-section': false,
-};
 
 async function render() {
   let LDProvider;
@@ -36,8 +25,9 @@ async function render() {
       // Without this, asyncWithLDProvider hangs indefinitely if LD
       // is unreachable - the user sees a blank screen forever.
       timeout: 5,
-      // timeout: 0.001,
 
+      // DEFAULT_FLAGS imported from constants.js - single source of truth.
+      // Used here as SDK fallback and in App.jsx as undefined guard.
       flags: DEFAULT_FLAGS,
 
       // Multi-context: three independent context kinds.
@@ -72,8 +62,8 @@ async function render() {
     console.error('[LaunchDarkly] Failed to initialize SDK:', error);
     console.warn('[LaunchDarkly] Rendering with default flag values:', DEFAULT_FLAGS);
 
-    // Fallback: create a pass-through provider using default flags only.
-    // This keeps the app functional without a live LD connection.
+    // Fallback: pass-through provider using default flags only.
+    // Keeps the app functional without a live LD connection.
     LDProvider = ({ children }) => children;
   }
 
@@ -81,7 +71,7 @@ async function render() {
   root.render(
     <React.StrictMode>
       <LDProvider>
-        <App defaultFlags={DEFAULT_FLAGS} />
+        <App />
       </LDProvider>
     </React.StrictMode>
   );
