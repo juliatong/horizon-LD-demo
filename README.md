@@ -1,4 +1,4 @@
- # Horizon Analytics - LaunchDarkly Feature Flag Demo
+# Horizon Analytics - LaunchDarkly Feature Flag Demo
 
 A React demo app showing feature flag-driven release, targeting, and experimentation using LaunchDarkly. Built for the LaunchDarkly SE technical exercise.
 
@@ -164,14 +164,15 @@ Post-restore verification: switch to Sam in the browser. He should see HeroOld (
 
 ## Demo State Guide
 
-| Demo part | Targeting | Default rule | Experiment |
-|-----------|-----------|--------------|------------|
-| Baseline (app loads) | ON | false | Stopped |
-| Part 1 Act 1 (release) | ON | true | Stopped |
-| Part 1 Act 2 (rollback) | ON | false | Stopped |
-| Part 1 Act 3 (kill switch) | ON | true | Stopped |
-| Part 2 (targeting demo) | ON | false | Stopped |
-| Experimentation | ON | false | Running |
+| Demo part | Before action | After action | Experiment |
+|-----------|--------------|--------------|------------|
+| Baseline (app loads) | — | Targeting ON, default false | Stopped |
+| Part 1 Act 1 (release) | Targeting ON, default false | Targeting ON, default true | Stopped |
+| Part 1 Act 2 (rollback) | Targeting ON, default true | Targeting ON, default false | Stopped |
+| Part 1 Act 3 (kill switch) | Targeting ON, default true | Targeting OFF | Stopped |
+| Reset (run enable-feature.sh) | Targeting OFF | Targeting ON, default false | Stopped |
+| Part 2 (targeting demo) | Targeting ON, default false | No change | Stopped |
+| Experimentation | Targeting ON, default false | No change | Running |
 
 **Reset sequence between Part 1 and Part 2:**
 1. Run `./enable-feature.sh` (restores targeting ON + default rule false)
