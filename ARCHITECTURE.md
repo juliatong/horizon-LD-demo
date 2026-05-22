@@ -6,69 +6,145 @@ For the pitch narrative and stakeholder strategy, see [DEMO_SCRIPT.md](./DEMO_SC
 
 ---
 
-## Decision 1: SDK Type — Where Does the Trust Boundary Sit?
+## 1. Multi-Context Model — Independent Axes of Targeting
 
-This is a product and security decision, not a technical preference.
+This is the highest-value architectural decision in this demo. It maps directly to how enterprise B2B SaaS actually structures data — and it's the decision most candidates skip.
+
+### The Problem With Flat Contexts
+
+Every B2B product eventually hits this scenario:
+
+> "Acme Corp just upgraded from free to enterprise. How do we give all 120 of their users the enterprise experience — right now, without a backfill job?"
+
+```
+FLAT USER MODEL:
+  Update plan attribute on every user record
+  -> 120 database writes
+  -> Risk of inconsistency during the update window
+  -> Some users see free, some see enterprise during transition
+  -> Maintenance burden grows with every org that upgrades
+
+ACCOUNT CONTEXT:
+  Update one account record
+  -> All 120 users instantly see enterprise
+  -> Zero propagation lag
+  -> Zero inconsistency
+  -> Scales to 10,000 orgs the same way it scales to 1
+```
+
+### The Three Context Kinds in This Demo
+
+```
+user    -> the human
+           Attributes: role, beta_tester
+           Changes when: the person changes their preferences
+           Targeting story: "QA team always sees it first"
+
+account -> the paying organization
+           Attributes: plan, region
+           Changes when: the org upgrades, moves region, changes tier
+           Targeting story: "enterprise APAC accounts before anyone else"
+           Key insight: plan lives HERE, not on user
+
+device  -> the machine
+           Attributes: type (desktop / mobile)
+           Changes when: the user switches devices
+           Targeting story: "desktop before mobile — different QA cycles"
+           Note: keys are stable per persona for demo repeatability.
+                 In production, device keys are generated per physical
+                 device and persisted in localStorage.
+```
+
+### The Design Rule
+
+```
+Ask: "Can this attribute change WITHOUT the other context kind changing?"
+
+YES -> separate context kind
+NO  -> same context kind
+```
+
+User email changes — doesn't change their org's plan. Separate.
+Org upgrades plan — doesn't change individual users. Separate.
+User switches device — doesn't change their beta opt-in. Separate.
+
+### The Cross-Context Rule — The Demo Moment That Matters
+
+Rule 2 in this demo requires two context kinds simultaneously:
+
+```
+user.beta_tester = true  AND  device.type = desktop  ->  true
+```
+
+Mei is a beta tester on desktop. She gets the feature. Switch her to mobile — same user, same beta opt-in, different device context. She drops to default. The rule failed because one of its two independent axes changed.
+
+This cannot be cleanly expressed with a flat user model. It requires two independently-evaluated context kinds. That is the architectural point.
+
+---
+
+## 2. SDK Type — Where Does the Trust Boundary Sit?
+
+This is a product and security decision, not a technical preference. The question is how much of your flag logic you are willing to have exist outside your own infrastructure.
 
 ### The Core Question
 
 > If your flag rules were visible to a competitor, would that damage your business?
 
 ```
-YES -> Server SDK. Rules stay inside your infrastructure.
-NO  -> Client/mobile SDK is acceptable for this use case.
+YES -> Server SDK. Rules stay inside your walls.
+NO  -> Client SDK is acceptable for this use case.
 ```
 
 ### Comparison
 
 | | Server SDK | Client / Mobile SDK |
 |--|------------|---------------------|
-| **Evaluation** | On your backend — full ruleset cached locally | On LD's servers — results only sent to device |
+| **Evaluation** | On your backend — ruleset cached locally | On LD's servers — results sent to device |
 | **LD visibility** | None — LD never sees your end users | Full — every user is a direct LD connection |
 | **SSE streams** | 1 stream regardless of user count | 1 stream per connected user |
 | **Business logic** | Never leaves your infrastructure | Evaluated outside your infrastructure |
 | **Billing** | Flat — seats and plan tier | MAU — grows linearly with user base |
 | **Resilience** | Highest — LD not in request path | Moderate — LD is in the critical path |
-| **Use when** | Flag rules reveal competitive or strategic intent | Flags must reach browser or device directly |
-
-### The Exploit This Difference Enables
-
-With client-side SDK, every flag value is visible in DevTools. A motivated user can:
-
-```
-1. Open DevTools -> Network tab
-2. See flag values returned to the browser
-3. Identify a flag like "premium-dashboard-access"
-4. Write a browser extension that intercepts the LD
-   response and changes false -> true
-5. Access the premium feature without paying
-```
-
-This is not theoretical. It is how client-side entitlement gates get bypassed.
+| **Use when** | Rules reveal competitive or strategic intent | Flags must reach browser or device directly |
 
 ### This Demo's Justified Choice
 
-This demo uses the client-side React SDK because:
+This demo uses the client-side React SDK because the flag controls a visual UI change — no entitlement enforced, no business consequence if a user inspects the flag value. Real-time streaming to the browser is required for the demo's instant-toggle moment. Server SDK cannot do this without a custom WebSocket layer.
+
+In production: entitlements, pricing gates, and access control belong server-side. Visual feature flags and UI experiments are appropriate for client-side. Most mature products use both.
+
+### The Exploit This Enables
+
+With client-side SDK, every flag value is readable in DevTools. A motivated user can:
 
 ```
-1. The flag controls a visual UI change (hero section)
-   No entitlement enforced. No business consequence if bypassed.
-
-2. Real-time visual feedback is required for demo impact
-   The "wow moment" only works with a streaming connection
-   direct to the browser.
-
-3. Server-side SDK cannot do browser streaming without
-   a custom WebSocket or SSE layer you write yourself.
+1. Open DevTools -> Network tab
+2. See flag values returned to the browser:
+   { "premium-dashboard-access": false }
+3. Write a browser extension that intercepts
+   the LD response and changes false -> true
+4. Access the premium feature without paying
 ```
 
-In production: entitlements, pricing gates, and access control belong server-side. Visual feature flags and UI experiments are appropriate for client-side.
+This is not theoretical. It is how client-side entitlement gates get bypassed in production. The line: if bypass has a commercial consequence, context must be server-verified. Two production patterns:
+
+```
+Pattern 1: Server-side SDK evaluation
+  Server evaluates flags against verified attributes
+  from your database. Flag values never reach the browser.
+
+Pattern 2: Server-issued signed context
+  Server returns a signed JWT with verified attributes.
+  Client passes JWT to LD — LD verifies the signature.
+  Client cannot tamper with plan or role.
+  Client still gets real-time SSE updates.
+```
 
 ---
 
-## Decision 2: Initialisation Strategy — Correctness First or Speed First?
+## 3. Initialisation Strategy — Correctness First or Speed First?
 
-This is a product and risk decision about what users see in the 100-300ms gap between page load and LaunchDarkly responding.
+Specific to client SDK. This decision is about what your users see in the 100-300ms gap between page load and LaunchDarkly responding.
 
 ### The Core Question
 
@@ -82,171 +158,151 @@ NO  -> withLDProvider (render immediately, correct later)
 ### Comparison
 
 | | `withLDProvider` — speed first | `asyncWithLDProvider` — correctness first |
-|--|--------------------------------|-------------------------------------------|
+|--|--------------------------------|------------------------------------------|
 | **Renders at** | 0ms — immediately | 150-300ms — after LD responds |
-| **Flag values at first render** | Wrong (defaults) | Correct |
+| **Flag values** | Wrong at first render (defaults) | Correct at first and only render |
 | **On LD response** | Re-renders — flicker visible | Single render — zero flicker |
 | **Risk** | Layout shift, mis-clicks, trust erosion | Blank screen if LD is slow or down |
-| **Use when** | Defaults are safe for a brief moment | Wrong values at render cause real harm |
-| **Suitable for** | Non-critical UI, low-stakes flags | Pricing, auth gates, layout-defining flags |
+| **Use when** | Defaults are safe for a brief moment | Wrong values cause real harm |
 
 ### The Naming Trap
 
-`asyncWithLDProvider` is the **blocking** option. The naming describes its JavaScript return type (a Promise), not its rendering behaviour. The `await` keyword is what creates the block.
-
-```javascript
-// This BLOCKS render until SDK is ready:
-const LDProvider = await asyncWithLDProvider({...})
-
-// This renders IMMEDIATELY (SDK catches up later):
-<LDProvider clientSideID={key} context={ctx}>
-```
-
-`withLDProvider` initializes at `componentDidMount` — the app is already rendered before the SDK connects.
+`asyncWithLDProvider` is the **blocking** option. The naming describes its JavaScript return type (a Promise), not its rendering behaviour. `withLDProvider` initialises at `componentDidMount` — the app renders before the SDK connects. `asyncWithLDProvider` with `await` blocks render until the SDK responds. The `await` is what creates the block.
 
 ### This Demo's Justified Choice
 
-`asyncWithLDProvider` with `await` — because this flag controls a layout-defining hero section. A visible flicker from old to new hero on a VP of Engineering's screen during a live demo would undermine the credibility of the demonstration. Correctness wins over speed.
+`asyncWithLDProvider` with `await` — this flag controls a layout-defining hero section. A visible flicker during a live demo undermines the credibility of the demonstration. In production with an existing loading state (auth check, data fetch), `withLDProvider` is acceptable — the spinner masks the flag evaluation latency.
 
-In production with a loading state already present (auth check, data fetch), `withLDProvider` is acceptable — the existing spinner masks the flag evaluation latency.
+### 3a. Bootstrap — Eliminating the Tradeoff Entirely
 
-### Timeout Safeguard
+Bootstrap answers a specific dissatisfaction: neither option above is good enough. It eliminates the correctness-versus-speed tradeoff entirely by arriving already knowing the correct flag values before the first render.
 
-```javascript
-timeout: 5   // seconds
+```
+CLIENT BOOTSTRAP (server-rendered apps):
+  Server evaluates flags using server SDK cache
+  Injects window.__LD_BOOTSTRAP__ into HTML before delivery
+  Browser arrives knowing correct values before JS runs
+  Zero flicker. Zero render delay. Zero gap.
+  Client SDK SSE connects in background for live updates.
+  Requires: Next.js, Rails, Django, or any server rendering layer.
+
+SERVER BOOTSTRAP (auto-scaling backends):
+  LD ruleset persisted to Redis / Memcached on startup
+  Server reads cache — instantly has rules before first request
+  Critical for auto-scaling — new instances are never cold.
+  Requires: Redis or Memcached alongside your server.
 ```
 
-Without a timeout, `asyncWithLDProvider` hangs indefinitely if LD is unreachable — the user sees a blank screen. The timeout fires after 5 seconds and falls back to `DEFAULT_FLAGS`. The app renders safely with the conservative default (old hero) rather than hanging.
-
-Recommended production range: 100-500ms for client-side SDKs. This demo uses 5 seconds for demo reliability over a potentially slow network.
+This demo is a client-side React SPA served from Vite — no server rendering layer. Bootstrap is not applicable here. For a production Next.js landing page at 40,000 daily visitors, bootstrap is the correct architecture.
 
 ---
 
-## Decision 3: Bootstrap Pattern — Eliminating the Tradeoff
+## 4. Billing Insight — The Architecture Expressed as a Contract
 
-Bootstrap answers a specific dissatisfaction: neither `withLDProvider` nor `asyncWithLDProvider` is good enough. It eliminates the correctness-versus-speed tradeoff entirely.
+This is not a product decision. It is an observation about how deeply architecture determines commercial outcomes. Understand it before you sign a contract.
 
-### The Goal
+### Why the Billing Units Are Opposite
 
-Arrive already knowing the correct flag values before serving the first request. Zero gap. Zero flicker. Zero render delay.
+LaunchDarkly charges for exactly what it can see and what it does. Because the two SDK types are architecturally opposite, their billing units are opposite too.
 
-### Two Mechanisms
+```
+Server SDK:
+  LD ships rules to your server once and steps away.
+  LD never sees your end users.
+  Cannot charge per user because it never sees them.
+  -> Flat billing: seats and plan tier.
 
-| | Client SDK — HTML embedding | Server SDK — in-process cache |
-|--|----------------------------|-----------------------------|
-| **Goal** | Browser arrives knowing values before JS runs | Server has rules before first request arrives |
-| **Mechanism** | Server injects `window.__LD_BOOTSTRAP__` into HTML | LD ruleset persisted to Redis / Memcached / disk |
-| **Who evaluates** | Your server (using server SDK cache) | Your server reads cache on startup |
-| **Live updates** | Client SDK SSE connects in background after render | SSE stream syncs rule changes in background |
-| **Requires** | Server rendering (Next.js, Rails, Django, Laravel) | Redis or Memcached alongside your server |
-| **Not for** | Pure SPA served from CDN | Auto-scaling without persistent cache layer |
+Client / Mobile SDK:
+  LD evaluates for every user.
+  Maintains one SSE stream per connected user.
+  Every user is a direct LD workload.
+  -> MAU billing: grows linearly with your user base.
+```
 
-### Why This Demo Doesn't Use Bootstrap
+The billing model did not emerge from a pricing committee. It emerged from the SSE architecture.
 
-This demo is a client-side React SPA served from Vite's dev server — no server rendering layer. Bootstrap requires server rendering to inject flag values into HTML before delivery. Not applicable to this stack.
+### The Compounding Risk
 
-For a production Next.js landing page with 40,000 daily visitors, bootstrap would be the correct architecture: server evaluates flags server-side, injects them into the HTML, client renders with zero gap.
+```
+Users          Server SDK cost       Client SDK cost
+10,000         Flat — no change      10,000 MAU
+500,000        Flat — no change      500,000 MAU
+10,000,000     Flat — no change      10,000,000 MAU
+```
+
+At growth stage, client/mobile SDK MAU cost compounds faster than expected. Teams that understand this architect a server SDK layer early — not to save money today, but to retain cost control as scale compounds. The architecture decision and the commercial decision are the same decision.
 
 ---
 
-## Decision 4: Multi-Context Model — Independent Axes of Targeting
+## 5. Migration Triggers — When to Evolve the Architecture
 
-### The Core Problem With Flat Contexts
-
-```
-SCENARIO: Acme Corp upgrades from free to enterprise.
-
-FLAT USER MODEL:
-  Update plan attribute on every user record
-  -> N database writes
-  -> Risk of inconsistency during update window
-  -> Some users see old plan during transition
-
-ACCOUNT CONTEXT:
-  Update one account record
-  -> All users in that account instantly see enterprise
-  -> Zero propagation lag
-  -> Zero inconsistency
-```
-
-### The Three Context Kinds in This Demo
-
-```
-user    -> the human
-           Changes: name, email, role, beta opt-in
-           Key: stable even if email changes
-           Targeting story: "QA team always sees it first"
-
-account -> the paying organization
-           Changes: plan, region, contract tier
-           Critical: plan lives HERE, not on user
-           Targeting story: "enterprise APAC accounts first"
-           Billing implication: server SDK flat regardless
-                                of how many users per account
-
-device  -> the machine
-           Changes: per session or per physical device
-           Targeting story: "desktop before mobile —
-                             different QA cycles"
-           Note: keys in this demo are stable per persona
-                 for demo repeatability. In production,
-                 device keys would be generated per physical
-                 device and persisted in localStorage.
-```
-
-### The Cross-Context Rule — Why It Matters
-
-Rule 2 in this demo:
-
-```
-user.beta_tester = true AND device.type = desktop -> true
-```
-
-This rule cannot be cleanly expressed with a flat user model. It evaluates two independently-changing dimensions simultaneously. When Mei switches from desktop to mobile, her `user.beta_tester` is unchanged but the rule fails — because the device context changed independently.
-
-This maps directly to a real production scenario: rolling out a new feature to opted-in users, but only after mobile QA is complete. The device context is the gating mechanism that doesn't require any user-level attribute changes.
-
-### The Design Rule for Context Kinds
-
-```
-Ask: "Can this attribute change WITHOUT the other context kind changing?"
-
-YES -> separate context kind
-NO  -> same context kind
-
-Examples:
-  User email changes -> doesn't change org plan
-  -> user and account are separate context kinds ✓
-
-  User's beta_tester changes -> doesn't change their device
-  -> user and device are separate context kinds ✓
-
-  User's name changes -> their user key doesn't change
-  -> both belong on user context ✓
-```
+| Trigger | Action |
+|---------|--------|
+| You add a flag that enforces an entitlement or paywall | Move that flag's evaluation to server-side SDK |
+| MAU-based LD bill starts scaling uncomfortably | Add server SDK layer for high-traffic flag evaluation |
+| You add server rendering (Next.js, Rails, etc.) | Bootstrap becomes available — eliminates correctness/speed tradeoff |
+| You need to evaluate flags in a service-to-service call | Server SDK — no browser, no SSE, no MAU charge |
+| Security review requires zero user data leaving infrastructure | Server SDK — LD sees your server, never your users |
+| New instances cold-starting under auto-scaling load | Server bootstrap with Redis — instances are never cold |
 
 ---
 
-## Decision 5: Error Handling Philosophy — Fail Closed, Not Open
+## 6. SDK Resilience and Caching — Production Behaviour Under Failure
 
-Three failure modes handled deliberately. The principle throughout: when in doubt, show the safe existing experience rather than accidentally releasing an untested feature.
+The LD React SDK caches flag values in both memory and localStorage automatically. LaunchDarkly is not in your critical path after initialisation.
+
+```
+App starts     -> SDK connects to LD
+               -> fetches flag values
+               -> stores in memory (runtime cache)
+               -> stores in localStorage (persistent cache)
+
+LD goes down   -> streaming connection drops
+               -> SDK detects disconnection
+               -> continues serving last known cached values
+               -> app keeps running with no errors, no broken UI
+               -> users see no change
+
+LD comes back  -> SDK reconnects automatically
+               -> fetches latest flag values
+               -> resumes normal operation
+```
+
+Visible right now in DevTools -> Application -> Local Storage -> localhost:5173. The key format is `ld:YOUR_CLIENT_ID:...` containing the current flag state.
+
+Three layers of resilience in this demo:
+
+```
+Layer 1: localStorage cache      -> mid-session LD outages
+Layer 2: 5-second init timeout   -> startup failures
+Layer 3: DEFAULT_FLAGS constant  -> no cached values exist
+                                    (wrong SDK key, first run)
+```
+
+The principle: the app has a safe answer at every failure point. It never presents a broken state to the user.
+
+---
+
+## 7. Error Handling — Deliberate, Not Defensive
+
+Three failure modes handled explicitly. Each one has a reason, not just a pattern.
 
 ### Failure Mode 1: SDK Unreachable at Startup
 
 ```javascript
-// asyncWithLDProvider with timeout + catch block
-timeout: 5,           // don't hang on blank screen
-flags: DEFAULT_FLAGS, // serve safe defaults on timeout
+asyncWithLDProvider({
+  timeout: 5,           // don't hang — render after 5s regardless
+  flags: DEFAULT_FLAGS, // serve safe defaults on timeout
+})
 
 catch (error) {
   // bad SDK key, network failure before timeout
-  // -> render app with defaults, don't crash
-  LDProvider = ({ children }) => children;
+  LDProvider = ({ children }) => children; // pass-through, serve defaults
 }
 ```
 
-Without this: blank screen indefinitely if LD is unreachable.
-With this: app renders in under 5 seconds regardless of LD availability.
+Without this: blank screen indefinitely if LD is unreachable at startup.
+Design choice: `DEFAULT_FLAGS = { 'new-hero-section': false }` — fail closed. Show the safe existing experience, never accidentally release an untested feature.
 
 ### Failure Mode 2: identify() Fails Mid-Session
 
@@ -257,153 +313,21 @@ try {
 } catch (err) {
   setError('Failed to switch persona...');
 } finally {
-  setSwitching(false);   // <- critical: always reset
-  setLoadingKey(null);   // <- always reset loading state
+  setSwitching(false);   // always reset — success or failure
+  setLoadingKey(null);   // always reset — success or failure
 }
 ```
 
-Without `finally`: a failed `identify()` leaves `switching = true` permanently. The persona panel freezes. Only a page reload recovers it.
-
-With `finally`: state always resets whether the call succeeds or fails. The user sees an error banner and can retry.
+The `finally` block is the critical detail. Without it, a failed `identify()` leaves `switching = true` permanently. The panel freezes. Only a page reload recovers it. `finally` guarantees state resets regardless of outcome — a pattern that only becomes obvious after you've been burned by its absence in production.
 
 ### Failure Mode 3: Flag Value Undefined
 
 ```javascript
-// Single source of truth: src/constants.js
-export const DEFAULT_FLAGS = { 'new-hero-section': false };
+// Single source of truth
+export const DEFAULT_FLAGS = { 'new-hero-section': false }; // constants.js
 
 // Guard in App.jsx
 const newHeroSection = flags.newHeroSection ?? DEFAULT_FLAGS['new-hero-section'];
-
-if (flags.newHeroSection === undefined) {
-  console.warn('[LaunchDarkly] Flag "new-hero-section" is undefined...');
-}
 ```
 
-Triggers when: flag doesn't exist in the reviewer's account, or client-side SDK availability is not enabled on the flag.
-
-Without guard: undefined flag silently renders HeroOld with no indication of why.
-With guard: console warning names the exact cause and fix. Single source of truth in `constants.js` prevents DEFAULT_FLAGS diverging between `main.jsx` and `App.jsx`.
-
----
-
-## Decision 6: Client-Side Context Verification
-
-Context attributes in this demo are client-constructed. The browser builds the `identify()` call and sends it to LD without server verification.
-
-### The Exploit
-
-```
-Free user opens DevTools
-Finds the identify() call in source code
-Changes account.plan from 'free' to 'enterprise'
-LD evaluates the tampered context
-Free user sees enterprise features
-```
-
-### When This Is Acceptable
-
-The `new-hero-section` flag controls a visual UI change. A free user seeing the new hero section has zero business consequence. Client-side context is acceptable.
-
-### When This Is Not Acceptable
-
-Any flag that enforces a business rule — entitlements, pricing gates, access control — requires server-verified identity. Two production patterns:
-
-```
-Pattern 1: Server-side SDK evaluation
-  Client never touches LD directly
-  Server evaluates flags against verified attributes
-  from your database (plan, role, permissions)
-  Flag values never reach the browser
-
-Pattern 2: Server-issued signed context
-  Client authenticates with your server
-  Server returns a signed JWT with verified attributes
-  Client passes JWT to LD — LD verifies the signature
-  Client cannot tamper with plan or role attributes
-  Client still gets real-time SSE updates
-```
-
-The rule: if bypass has a business consequence, context must be server-verified.
-
----
-
-## Architectural Insight: The Billing Model Is the Architecture
-
-This is not a product decision. It is an observation about how deeply architecture determines commercial outcomes.
-
-### Why the Billing Units Are Opposite
-
-LaunchDarkly charges for exactly what it can see and what it does. Because the two SDK types are architecturally opposite, their billing units are opposite too.
-
-```
-Server SDK:
-  LD ships rules to your server once and steps away.
-  LD sees one server — never sees your end users.
-  Cannot charge per user because it never sees them.
-  -> Flat billing: seats and plan tier.
-
-Client / Mobile SDK:
-  LD evaluates for every user.
-  LD maintains one SSE stream per connected user.
-  MAU is the natural unit because every user
-  is a direct LD workload.
-  -> MAU billing: grows linearly with your user base.
-```
-
-### The Compounding Risk
-
-```
-Users         Server SDK cost       Client SDK cost
-10,000        Flat — no change      10,000 MAU
-500,000       Flat — no change      500,000 MAU
-10,000,000    Flat — no change      10,000,000 MAU
-```
-
-At growth stage, client/mobile SDK MAU cost compounds faster than expected. Teams that understand this architect a server SDK layer early — not to save money today, but to retain cost control as scale compounds.
-
-### The Strategic Implication
-
-> The architecture decision and the commercial decision are the same decision. Understand this before you sign a contract.
-
----
-
-## Migration Triggers: When to Move Between Patterns
-
-| Trigger | Action |
-|---------|--------|
-| You add a flag that enforces an entitlement or paywall | Move that flag's evaluation to server-side SDK |
-| MAU-based LD bill starts scaling uncomfortably | Add server SDK layer for high-traffic flag evaluation |
-| You add server rendering (Next.js, Rails, etc.) | Bootstrap becomes available — eliminates correctness/speed tradeoff |
-| You need to evaluate flags for a service-to-service call | Server SDK — no browser, no SSE, no MAU |
-| Security review requires zero user data leaving infrastructure | Server SDK — LD sees your server, never your users |
-
----
-
-## SDK Resilience and Caching
-
-The LD React SDK caches flag values in both memory and localStorage automatically.
-
-```
-App starts    -> SDK connects to LD
-              -> fetches flag values
-              -> stores in memory (runtime cache)
-              -> stores in localStorage (persistent cache)
-
-LD goes down  -> streaming connection drops
-              -> SDK detects disconnection
-              -> continues serving cached values
-              -> app keeps running normally
-
-LD comes back -> SDK reconnects automatically
-              -> fetches latest flag values
-              -> resumes normal operation
-```
-
-Visible right now: DevTools -> Application -> Local Storage -> localhost:5173.
-Key format: `ld:YOUR_CLIENT_ID:...` containing the current flag state.
-
-Three layers of resilience in this demo:
-1. localStorage cache for mid-session LD outages
-2. 5-second timeout fallback for startup failures
-3. `DEFAULT_FLAGS` in `constants.js` if no cached values exist
+Triggers when: flag not created in the reviewer's account, or client-side SDK availability not enabled. Without the guard, undefined silently renders the old hero with no indication of why. With the guard, a console warning names the exact cause and fix. `DEFAULT_FLAGS` defined once in `constants.js` — imported by both `main.jsx` and `App.jsx` — prevents the two values silently diverging if one is changed.
