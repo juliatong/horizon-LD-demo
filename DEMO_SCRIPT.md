@@ -1,5 +1,5 @@
 # Demo Script - Horizon Analytics / LaunchDarkly
-## Meridian Digital SE Presentation
+## SA/SE- Julia Presentation
 
 For technical setup, see [README.md](./README.md).
 For deep architectural Q&A, see [ARCHITECTURE.md](./ARCHITECTURE.md).
@@ -34,60 +34,25 @@ ADJUST YOUR OPENING:
 **Series B / Scale-up (50-500 engineers) — LD's APJ sweet spot:**
 
 ```
-1. VP of Engineering    40%   Controls budget + feels the pain personally
-                              Your primary audience. Win them, win the room.
+1. VP of Engineering    40%  Champion and Budget Owner.
 
-2. CTO                  25%   Strategic sign-off. Technically fluent.
-                              Cares about platform bets, not feature lists.
-                              Usually defers to VP Eng on tooling.
+2. CTO                  x%   Strategic and platform sign-off required at scale.
 
-3. VP of Product        20%   Ship velocity and data story.
-                              Experimentation section lands here.
-                              Can become a champion if you show PM value.
+3. VP of Product        y%   Ship velocity and data story.
+                              Feature Experimentation section lands here.
 
-4. Staff / Principal    10%   Technical veto power.
+4. Staff / Principal    z%   Technical veto power.
 Engineer                      Can kill a deal with "we can build this."
                               Needs to be won technically, not commercially.
 
-5. CISO                  5%   Blocker, rarely a champion.
+5. CISO                  e%   Blocker, rarely a champion.
                               One unanswered security question stalls months.
 ```
 
-**Enterprise (500+ engineers):**
-
-```
-1. VP of Engineering    25%   Still the champion, no longer sole budget owner
-2. CTO / SVP Eng        25%   Platform-level sign-off required at this scale
-3. Economic Buyer       20%   CFO / COO / VP Eng with budget authority
-                              Never attends demos. Reads the ROI summary.
-4. CISO                 15%   Weight jumps at enterprise. SOC 2, data
-                              residency, vendor review required.
-5. VP of Product        10%   More siloed from engineering at this scale
-6. Staff Engineer        5%   Still a veto risk, less likely in the room
-```
-
-### APJ Regional Nuance
-
-```
-AUSTRALIA   Champion-driven. VP Eng has autonomous budget authority.
-            Direct objections. Fastest cycle in APJ.
-
-SINGAPORE   Regional HQ for many enterprises. Decision makers may be
-            APAC-wide. Security and compliance weight is higher.
-            MAS, PDPA, data residency questions likely.
-
-JAPAN       Consensus-driven (ringi system). Decision appears to come
-            from committee. Real champion is often mid-level but
-            influential. Takes longer — once decided, rarely reverses.
-
-INDIA       Engineering-heavy evaluation. Staff engineers carry
-            significant influence. Cost sensitivity is higher.
-            ROI story needs concrete numbers, not qualitative claims.
-```
 
 ### The Champion's Two Sentences
 
-Your champion needs to sell this internally to people who never watched your demo. Give them the words:
+My champion needs to sell this internally to people who never watched my demo. I will give them the words:
 
 > "LaunchDarkly lets us ship features to specific users before full release, and kill any feature in seconds if something goes wrong. We estimate it eliminates one major incident rollback per quarter — which costs us [X hours engineering time] and [Y in customer impact] each time."
 
@@ -103,13 +68,13 @@ Choose based on who is most senior in the room.
 > "Picture your team on a Friday afternoon. They've just shipped a feature. 45 minutes after deploy, PagerDuty fires. The feature is broken in production. The rollback takes three hours, two engineers, and ruins someone's weekend. What if killing a broken feature took three seconds — and nobody needed to touch a deploy pipeline?"
 
 **CTO in the room:**
-> "There's a single architectural decision that changes how your entire engineering organisation ships software. It's not a new framework or a new cloud provider. It's decoupling your deploy pipeline from your release decision. LaunchDarkly is the infrastructure layer that makes that possible."
+> "..."
 
 **VP of Product in the room:**
-> "Your PM shipped a feature last sprint. Three weeks later they're still waiting to know if it worked. The data is buried in analytics, the engineers are on the next sprint, and the decision to roll back or double down is being made on instinct. What if the PM could see live conversion data while the rollout was still happening?"
+> "..."
 
 **Security-conscious room:**
-> "Before I start — I know security teams have questions about what data leaves your infrastructure when you adopt a third-party flag evaluation service. Let me show you exactly how the trust boundary works in this architecture, because it's the first decision I made when designing this."
+> "..."
 
 ---
 
