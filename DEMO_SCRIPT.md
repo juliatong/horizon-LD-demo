@@ -6,7 +6,7 @@ For deep architectural Q&A, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
-## Before You Walk In: Reading the Room
+## Before Walk In: Reading the Room
 
 Fill this in before every meeting. Five minutes of stakeholder mapping changes the entire opening.
 
@@ -229,7 +229,7 @@ DO:    Point to the persona switcher panel in the browser.
 SAY:   "Before I show you targeting, notice the context
         model. Three independent kinds — user, account,
         device. The plan lives on the account, not the user.
-        That matters. If Acme Corp upgrades from free to
+        That matters. If Horizon Corp upgrades from free to
         enterprise, you update one account record and every
         user in that org instantly gets the enterprise
         experience. With a flat user model, you'd be
@@ -274,7 +274,7 @@ DO:    Click Akira (Enterprise APAC).
        HeroNew appears. Green badge shows account rule.
 
 SAY:   "Akira isn't individually targeted. His account —
-        Acme Corp — is on the enterprise plan in APAC.
+        Horizon Corp — is on the enterprise plan in APAC.
         The rule evaluated his account context, not his
         user context. The plan lives on the organisation,
         not on the person."
