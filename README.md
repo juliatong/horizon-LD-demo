@@ -166,12 +166,12 @@ Post-restore verification: switch to Sam in the browser. He should see HeroOld (
 
 | Demo part | Before action | After action | Experiment |
 |-----------|--------------|--------------|------------|
-| Setup (before demo starts) | — | Flag OFF, default rule=true, off variation=false, no rules | Stopped |
-| Part 1 Act 1 (release) | Flag OFF | Flag ON, everyone sees HeroNew | Stopped |
+| Setup (before demo starts) | — | Flag OFF, off variation=false, no rules | Stopped |
+| Part 1 Act 1 (release) | Flag OFF | Flag ON, default rule=true, everyone sees HeroNew | Stopped |
 | Part 1 Act 2 (rollback) | Flag ON | Flag OFF, everyone sees HeroOld | Stopped |
 | Part 1 Act 3 (kill switch) | Flag OFF -> toggle ON first, then run script | Flag OFF via kill script, everyone sees HeroOld | Stopped |
-| Transition (add targeting rules) | Flag OFF, no rules | Rules added, default rule=false, flag still OFF | Stopped |
-| Part 2 (targeting demo) | Flag OFF, rules configured | Flag ON, switch personas | Stopped |
+| Transition (add targeting rules) | Flag OFF, no rules | Flag ON, default rule=false, add Rules | Stopped |
+| Part 2 (targeting demo) | Flag ON, default rule=false, rules configured | Switch personas | Stopped |
 | Experimentation | Flag ON, default rule=false | No change | Running |
 
 **Transition between Part 1 and Part 2 (add targeting rules):**
