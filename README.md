@@ -166,22 +166,35 @@ Post-restore verification: switch to Sam in the browser. He should see HeroOld (
 
 | Demo part | Before action | After action | Experiment |
 |-----------|--------------|--------------|------------|
-| Baseline (app loads) | — | Targeting ON, default false | Stopped |
-| Part 1 Act 1 (release) | Targeting ON, default false | Targeting ON, default true | Stopped |
-| Part 1 Act 2 (rollback) | Targeting ON, default true | Targeting ON, default false | Stopped |
-| Part 1 Act 3 (kill switch) | Targeting ON, default true | Targeting OFF | Stopped |
-| Reset (run enable-feature.sh) | Targeting OFF | Targeting ON, default false | Stopped |
-| Part 2 (targeting demo) | Targeting ON, default false | No change | Stopped |
-| Experimentation | Targeting ON, default false | No change | Running |
+| Setup (before demo starts) | — | Flag OFF, default rule=true, off variation=false, no rules | Stopped |
+| Part 1 Act 1 (release) | Flag OFF | Flag ON, everyone sees HeroNew | Stopped |
+| Part 1 Act 2 (rollback) | Flag ON | Flag OFF, everyone sees HeroOld | Stopped |
+| Part 1 Act 3 (kill switch) | Flag OFF -> toggle ON first, then run script | Flag OFF via kill script, everyone sees HeroOld | Stopped |
+| Transition (add targeting rules) | Flag OFF, no rules | Rules added, default rule=false, flag still OFF | Stopped |
+| Part 2 (targeting demo) | Flag OFF, rules configured | Flag ON, switch personas | Stopped |
+| Experimentation | Flag ON, default rule=false | No change | Running |
 
-**Reset sequence between Part 1 and Part 2:**
-1. Run `./enable-feature.sh` (restores targeting ON + default rule false)
-2. Confirm Sam sees HeroOld in the browser
+**Transition between Part 1 and Part 2 (add targeting rules):**
+1. Flag is currently OFF after the kill switch
+2. In the LD dashboard, add targeting rules while flag is still OFF:
+   - Individual target: `qa-jane` -> true
+   - Rule 1: account.plan = enterprise AND account.region = apac -> true
+   - Rule 2: user.beta_tester = true AND device.type = desktop -> true
+   - Default rule: false
+3. Do not toggle the flag ON yet — that happens when Part 2 demo starts
+
+**Starting Part 2 (targeting demo):**
+1. Toggle the flag ON in the dashboard
+2. Switch personas and observe targeting rules evaluating:
+   - Jane -> HeroNew (individual target)
+   - Akira -> HeroNew (Rule 1: enterprise + apac)
+   - Sam -> HeroOld (default fallthrough)
+   - Mei -> HeroNew (Rule 2: beta_tester + desktop)
 
 **Reset for experimentation demo:**
-1. Confirm targeting is ON, default rule is false
+1. Flag is already ON, default rule is false — no flag changes needed
 2. Start the experiment iteration in the dashboard
-3. Switch to Sam and generate CTA clicks
+3. Switch to Sam and generate CTA clicks on both hero variations
 
 ---
 
