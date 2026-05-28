@@ -83,7 +83,7 @@ Choose based on who is most senior in the room.
 ### Setup State Before Starting
 
 ```
-Flag:         targeting ON, default rule false
+Flag:         targeting OFF
 Experiment:   stopped
 Browser:      localhost:5173 open, Sam selected in persona switcher
               -> Sam sees HeroOld (the "safe" baseline)
@@ -118,7 +118,7 @@ WHY:   Establishes the core concept: deploy != release.
 **Beat 1.2 — The zero-deploy release**
 
 ```
-DO:    Go to LD dashboard. Change default rule to true. Save.
+DO:    Go to LD dashboard. Toggle ON, Change default rule to true. Save.
        Watch the browser WITHOUT refreshing.
 
 SAY:   "I just turned on the flag. Watch the browser."

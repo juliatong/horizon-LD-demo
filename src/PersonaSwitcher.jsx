@@ -2,26 +2,31 @@ import { useState } from 'react';
 import { useLDClient } from 'launchdarkly-react-client-sdk';
 
 // ─────────────────────────────────────────────────────────
-// PersonaSwitcher: Demo tool that simulates different users.
-//
-// Each persona carries three context kinds:
+// PersonaSwitcher: Simulates different users with different
+// context attributes across three context kinds:
 //
 //   user    - the human (role, beta opt-in)
 //             Targeting story: "QA team always sees it first"
-//
 //   account - the paying organization (plan, region)
 //             Targeting story: "enterprise APAC accounts first"
 //             Key insight: upgrading one account instantly
 //             affects all users in it - no user record updates
-//
 //   device  - the machine (type: desktop | mobile)
-//             Targeting story: "desktop before mobile -
-//             different QA cycles, different risk profiles"
+//             Targeting story: "desktop before mobile - different QA cycles, different risk profiles"  
 //
-// Mei demonstrates cross-context targeting:
-//   user.beta_tester = true AND device.type = desktop
-//   Both conditions must be true simultaneously.
-//   If she switches to mobile, she drops to default.
+// Five personas demonstrate four targeting outcomes:
+//
+//   Jane          → individual target (always gets feature)
+//   Akira         → account-level rule (enterprise + apac)
+//   Sam           → default fallthrough (safety net)
+//   Mei (desktop) → cross-context rule (beta + desktop)
+//   Mei (mobile)  → same user, same beta opt-in, different
+//                   device → rule fails → default false
+//
+// Mei (desktop) vs Mei (mobile) is the cross-context proof:
+// two context kinds evaluated simultaneously. One axis
+// changes, the rule fails, the experience changes.
+// No code change. No page reload. One click.
 // ─────────────────────────────────────────────────────────
 
 const PERSONAS = [
@@ -68,7 +73,7 @@ const PERSONAS = [
     targeting_reason: 'Default fallthrough -> false (the safety net)',
   },
   {
-    key: 'user-mei',
+    key: 'user-mei-desktop',
     name: 'Mei (Beta, Desktop)',
     role: 'member',
     beta_tester: true,
@@ -80,6 +85,25 @@ const PERSONAS = [
     device_type: 'desktop',
     description: 'Beta tester on desktop - cross-context rule match',
     targeting_reason: 'Rule: user.beta_tester = true AND device.type = desktop',
+  },
+  {
+    // Same user as Mei (desktop) - same beta opt-in, same account.
+    // Only device.type changes: desktop -> mobile.
+    // Rule 2 requires BOTH user.beta_tester = true AND device.type = desktop.
+    // Mobile fails the device condition -> rule fails -> default false.
+    // This is the cross-context proof: one axis changes, experience changes.
+    key: 'user-mei-mobile',
+    name: 'Mei (Beta, Mobile)',
+    role: 'member',
+    beta_tester: true,
+    account_key: 'acc-global-tech',
+    account_name: 'Global Tech EMEA',
+    account_plan: 'enterprise',
+    account_region: 'emea',
+    device_key: 'dev-mobile-mei',
+    device_type: 'mobile',
+    description: 'Same beta tester, mobile device - rule fails, drops to default',
+    targeting_reason: 'device.type = mobile -> Rule 2 fails -> default false',
   },
 ];
 
@@ -131,10 +155,6 @@ function PersonaSwitcher() {
       //   - Network is unavailable during the switch
       //   - LD streaming connection drops mid-request
       //   - SDK key has been revoked
-      //
-      // Without this catch, switching stays true forever and the
-      // persona panel freezes. With it, we surface the error and
-      // reset state so the user can retry.
       console.error('[LaunchDarkly] identify() failed:', err);
       setError('Failed to switch persona. Check your connection and try again.');
 
@@ -164,6 +184,7 @@ function PersonaSwitcher() {
       {PERSONAS.map((persona) => {
         const isActive = persona.key === activeKey;
         const isLoading = persona.key === loadingKey;
+        const isMobile = persona.device_type === 'mobile';
 
         return (
           <button
@@ -174,6 +195,7 @@ function PersonaSwitcher() {
               ...styles.personaButton,
               ...(isActive ? styles.active : {}),
               ...(isLoading ? styles.loading : {}),
+              ...(isMobile ? styles.mobilePersona : {}),
               opacity: switching && !isActive && !isLoading ? 0.4 : 1,
             }}
           >
@@ -204,7 +226,9 @@ function PersonaSwitcher() {
                 </div>
                 <div style={styles.contextRow}>
                   <span style={styles.contextLabel}>device</span>
-                  <span style={styles.tag}>{persona.device_type}</span>
+                  <span style={isMobile ? styles.tagMobile : styles.tag}>
+                    {persona.device_type}
+                  </span>
                 </div>
               </>
             )}
@@ -269,6 +293,10 @@ const styles = {
     textAlign: 'left',
     transition: 'border-color 0.2s, background-color 0.2s',
   },
+  mobilePersona: {
+    backgroundColor: '#2a1a2a',
+    borderColor: 'rgba(180, 80, 180, 0.3)',
+  },
   active: {
     border: '1px solid #00c896',
     backgroundColor: '#1e3a3a',
@@ -320,6 +348,16 @@ const styles = {
     fontWeight: 600,
     backgroundColor: 'rgba(0, 200, 150, 0.15)',
     color: '#00c896',
+    borderRadius: '4px',
+    textTransform: 'uppercase',
+  },
+  tagMobile: {
+    display: 'inline-block',
+    padding: '2px 8px',
+    fontSize: '0.65rem',
+    fontWeight: 600,
+    backgroundColor: 'rgba(180, 80, 180, 0.15)',
+    color: '#c880c8',
     borderRadius: '4px',
     textTransform: 'uppercase',
   },
